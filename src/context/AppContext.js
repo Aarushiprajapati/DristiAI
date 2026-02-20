@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
 import { auth as firebaseAuth } from '../config/firebase';
 import i18n from '../i18n';
 
@@ -16,49 +16,71 @@ export const AppProvider = ({ children }) => {
     const [highContrast, setHighContrast] = useState(false);
     const [emergencyContacts, setEmergencyContacts] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [voiceAssistantEnabled, setVoiceAssistantEnabled] = useState(true);
 
     // Load persisted settings and listen for auth changes
     useEffect(() => {
-        loadSettings();
+        let isMounted = true;
 
-        // Listen for Firebase Auth changes
-        const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
-            if (firebaseUser) {
-                setUser(firebaseUser);
-                setIsDemoMode(false);
-            } else {
-                // Only clear if not in demo mode
-                setUser(prev => prev?.uid === 'demo' ? prev : null);
+        const initialize = async () => {
+            // 1. Load settings first
+            try {
+                const stored = await AsyncStorage.getItem('@drishti_settings');
+                if (stored && isMounted) {
+                    const s = JSON.parse(stored);
+                    if (s.language) {
+                        setLanguage(s.language);
+                        i18n.changeLanguage(s.language);
+                    }
+                    if (s.voiceSpeed !== undefined) setVoiceSpeed(s.voiceSpeed);
+                    if (s.sensitivity !== undefined) setSensitivity(s.sensitivity);
+                    if (s.hapticEnabled !== undefined) setHapticEnabled(s.hapticEnabled);
+                    if (s.highContrast !== undefined) setHighContrast(s.highContrast);
+                    if (s.emergencyContacts) setEmergencyContacts(s.emergencyContacts);
+                    if (s.voiceAssistantEnabled !== undefined) setVoiceAssistantEnabled(s.voiceAssistantEnabled);
+                }
+            } catch (e) {
+                console.warn('Failed to load settings:', e);
             }
-            setIsLoading(false);
+
+            // 2. Then set up the Auth listener
+            console.log('Setting up Auth listener...');
+            const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+                console.log('Auth state changed:', firebaseUser ? 'Logged In' : 'Logged Out');
+                if (isMounted) {
+                    if (firebaseUser) {
+                        setUser(firebaseUser);
+                        setIsDemoMode(false);
+                    } else {
+                        // Only clear if not in demo mode
+                        setUser(prev => prev?.uid === 'demo' ? prev : null);
+                    }
+                    setIsLoading(false);
+                }
+            }, (error) => {
+                console.error('Auth state error:', error);
+                if (isMounted) setIsLoading(false);
+            });
+
+            return unsubscribe;
+        };
+
+        let authUnsubscribe;
+        initialize().then(unsub => {
+            authUnsubscribe = unsub;
         });
 
-        return () => unsubscribe();
+        return () => {
+            isMounted = false;
+            if (authUnsubscribe) authUnsubscribe();
+        };
     }, []);
-
-    const loadSettings = async () => {
-        try {
-            const stored = await AsyncStorage.getItem('@drishti_settings');
-            if (stored) {
-                const s = JSON.parse(stored);
-                if (s.language) { setLanguage(s.language); i18n.changeLanguage(s.language); }
-                if (s.voiceSpeed !== undefined) setVoiceSpeed(s.voiceSpeed);
-                if (s.sensitivity !== undefined) setSensitivity(s.sensitivity);
-                if (s.hapticEnabled !== undefined) setHapticEnabled(s.hapticEnabled);
-                if (s.highContrast !== undefined) setHighContrast(s.highContrast);
-                if (s.emergencyContacts) setEmergencyContacts(s.emergencyContacts);
-            }
-        } catch (e) {
-            console.warn('Failed to load settings:', e);
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const saveSettings = async (updates) => {
         try {
             const current = {
-                language, voiceSpeed, sensitivity, hapticEnabled, highContrast, emergencyContacts,
+                language, voiceSpeed, sensitivity, hapticEnabled, highContrast,
+                emergencyContacts, voiceAssistantEnabled,
                 ...updates,
             };
             await AsyncStorage.setItem('@drishti_settings', JSON.stringify(current));
@@ -95,6 +117,12 @@ export const AppProvider = ({ children }) => {
         saveSettings({ highContrast: next });
     };
 
+    const toggleVoiceAssistant = () => {
+        const next = !voiceAssistantEnabled;
+        setVoiceAssistantEnabled(next);
+        saveSettings({ voiceAssistantEnabled: next });
+    };
+
     const addEmergencyContact = (contact) => {
         const updated = [...emergencyContacts, { ...contact, id: Date.now().toString() }];
         setEmergencyContacts(updated);
@@ -106,6 +134,19 @@ export const AppProvider = ({ children }) => {
         setEmergencyContacts(updated);
         saveSettings({ emergencyContacts: updated });
     };
+
+    // Centralized logout function
+    const logout = useCallback(async () => {
+        try {
+            if (!isDemoMode) {
+                await firebaseSignOut(firebaseAuth);
+            }
+        } catch (e) {
+            console.warn('Sign out error:', e);
+        }
+        setUser(null);
+        setIsDemoMode(false);
+    }, [isDemoMode]);
 
     return (
         <AppContext.Provider
@@ -119,6 +160,8 @@ export const AppProvider = ({ children }) => {
                 highContrast, toggleHighContrast,
                 emergencyContacts, addEmergencyContact, removeEmergencyContact,
                 isLoading,
+                voiceAssistantEnabled, toggleVoiceAssistant,
+                logout,
             }}
         >
             {children}

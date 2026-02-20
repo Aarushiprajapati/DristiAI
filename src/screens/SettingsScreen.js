@@ -9,8 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { useApp } from '../context/AppContext';
 import { useTTS } from '../hooks/useTTS';
 import { colors, spacing, fontSize, fontWeight, radius } from '../config/theme';
-import { signOut } from 'firebase/auth';
-import { auth } from '../config/firebase';
+// signOut and auth are now handled by AppContext logout function
 
 const VOICE_SPEEDS = [
     { label: 'Slow', value: 0.6 },
@@ -35,6 +34,8 @@ export default function SettingsScreen({ navigation }) {
         highContrast, toggleHighContrast,
         emergencyContacts, addEmergencyContact, removeEmergencyContact,
         setIsDemoMode,
+        voiceAssistantEnabled, toggleVoiceAssistant,
+        logout,
     } = useApp();
     const { speak } = useTTS();
 
@@ -69,7 +70,7 @@ export default function SettingsScreen({ navigation }) {
         );
     };
 
-    const handleLogout = async () => {
+    const handleLogout = () => {
         Alert.alert(
             t('settings_logout'),
             'Are you sure you want to sign out?',
@@ -78,14 +79,9 @@ export default function SettingsScreen({ navigation }) {
                 {
                     text: 'Sign Out',
                     style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            await signOut(auth);
-                        } catch (_) { }
-                        setUser(null);
-                        setIsDemoMode(false);
-                        navigation.replace('Auth');
-                    },
+                    // logout() calls Firebase signOut, clears user state.
+                    // AppNavigator auto-switches to Auth flow when user becomes null.
+                    onPress: () => logout(),
                 },
             ]
         );
@@ -186,6 +182,7 @@ export default function SettingsScreen({ navigation }) {
                             />
                         </Row>
                         <View style={styles.divider} />
+                        <View style={styles.divider} />
                         <Row label={t('settings_dark_mode')}>
                             <Switch
                                 value={highContrast}
@@ -194,6 +191,20 @@ export default function SettingsScreen({ navigation }) {
                                 thumbColor={highContrast ? colors.warning : colors.textMuted}
                             />
                         </Row>
+                        <View style={styles.divider} />
+                        <Row label="🎤 Voice Assistant (Auto-on)">
+                            <Switch
+                                value={voiceAssistantEnabled}
+                                onValueChange={toggleVoiceAssistant}
+                                trackColor={{ false: colors.border, true: colors.safe }}
+                                thumbColor={voiceAssistantEnabled ? colors.safe : colors.textMuted}
+                            />
+                        </Row>
+                        {voiceAssistantEnabled && (
+                            <Text style={styles.voiceAssistHint}>
+                                Voice assistant will greet you and start listening automatically when you open the app. No button press needed.
+                            </Text>
+                        )}
                     </View>
 
                     {/* ── Emergency Contacts ── */}
@@ -400,4 +411,8 @@ const styles = StyleSheet.create({
     modalActions: { flexDirection: 'row', gap: spacing.md },
     modalBtn: { flex: 1, padding: spacing.md, borderRadius: radius.md, alignItems: 'center' },
     modalBtnText: { color: '#fff', fontWeight: fontWeight.bold, fontSize: fontSize.md },
+    voiceAssistHint: {
+        color: colors.textMuted, fontSize: fontSize.xs,
+        lineHeight: 18, paddingHorizontal: spacing.sm, paddingBottom: spacing.sm,
+    },
 });

@@ -1,84 +1,196 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 
-// ─── Demo detections for simulator/no-camera mode ───────────────────────────
-const DEMO_DETECTIONS = [
-    { class: 'person', score: 0.92, distanceM: 2.5, bbox: [60, 80, 180, 320] },
-    { class: 'bicycle', score: 0.85, distanceM: 3.8, bbox: [200, 150, 260, 280] },
-    { class: 'car', score: 0.91, distanceM: 6.0, bbox: [10, 200, 300, 200] },
-    { class: 'stairs', score: 0.78, distanceM: 1.5, bbox: [50, 350, 280, 150] },
-    { class: 'drain cover', score: 0.72, distanceM: 1.0, bbox: [90, 400, 140, 80] },
+/**
+ * Real-time Obstacle Detection Hook
+ * 
+ * Provides realistic real-time object detection simulation:
+ * ─ Multiple simultaneous objects
+ * ─ Distance-based severity classification
+ * ─ Natural movement patterns (objects moving closer/further)
+ * ─ Random spawn/despawn of objects
+ * ─ Ready for TF.js COCO-SSD integration on real device
+ * 
+ * For production: Replace processFrame with actual ML model inference.
+ */
+
+// Object categories with realistic properties
+const OBJECT_CATEGORIES = [
+    { class: 'person', emoji: '🚶', minDist: 0.5, maxDist: 8, moveSpeed: 0.3, frequency: 0.35 },
+    { class: 'bicycle', emoji: '🚲', minDist: 1, maxDist: 10, moveSpeed: 0.5, frequency: 0.15 },
+    { class: 'car', emoji: '🚗', minDist: 2, maxDist: 15, moveSpeed: 1.2, frequency: 0.2 },
+    { class: 'motorcycle', emoji: '🏍️', minDist: 1.5, maxDist: 12, moveSpeed: 0.8, frequency: 0.1 },
+    { class: 'stairs', emoji: '🪜', minDist: 0.5, maxDist: 5, moveSpeed: 0, frequency: 0.1 },
+    { class: 'pothole', emoji: '🕳️', minDist: 0.3, maxDist: 4, moveSpeed: 0, frequency: 0.08 },
+    { class: 'dog', emoji: '🐕', minDist: 0.5, maxDist: 6, moveSpeed: 0.4, frequency: 0.08 },
+    { class: 'traffic cone', emoji: '🔶', minDist: 0.5, maxDist: 5, moveSpeed: 0, frequency: 0.05 },
+    { class: 'bench', emoji: '🪑', minDist: 0.5, maxDist: 5, moveSpeed: 0, frequency: 0.04 },
+    { class: 'pole', emoji: '🔩', minDist: 0.3, maxDist: 3, moveSpeed: 0, frequency: 0.06 },
+    { class: 'auto rickshaw', emoji: '🛺', minDist: 1, maxDist: 10, moveSpeed: 0.6, frequency: 0.08 },
+    { class: 'speed breaker', emoji: '⚠️', minDist: 0.5, maxDist: 5, moveSpeed: 0, frequency: 0.05 },
 ];
 
-// Estimate distance from bounding box height (rough heuristic)
-const estimateDistance = (bbox, frameHeight = 720) => {
-    const boxHeight = bbox[3];
-    // Taller box = closer object
-    const ratio = boxHeight / frameHeight;
-    const distance = Math.max(0.5, (1 - ratio) * 8).toFixed(1);
-    return parseFloat(distance);
+// Generate a random bounding box
+const randomBBox = () => {
+    const x = Math.random() * 250 + 20;
+    const y = Math.random() * 300 + 80;
+    const w = Math.random() * 120 + 60;
+    const h = Math.random() * 150 + 80;
+    return [x, y, w, h];
 };
+
+// Generate a unique ID
+let idCounter = 0;
+const uid = () => `det_${++idCounter}_${Date.now()}`;
 
 export const useObstacleDetection = () => {
     const { sensitivity, isDemoMode } = useApp();
     const [detections, setDetections] = useState([]);
     const [isRunning, setIsRunning] = useState(false);
-    const [demoIndex, setDemoIndex] = useState(0);
-    const demoTimerRef = useRef(null);
+    const [stats, setStats] = useState({ totalDetected: 0, dangerAlerts: 0, sessionStart: null });
+    const timerRef = useRef(null);
+    const activeObjectsRef = useRef([]);
     const confidenceThreshold = 0.3 + sensitivity * 0.4; // maps 0–1 sensitivity → 0.3–0.7
+    const frameCountRef = useRef(0);
 
-    // ── Demo mode: cycle through fake detections ─────────────────────────────
-    const startDemoMode = useCallback(() => {
+    /**
+     * Spawn a new random detection object
+     */
+    const spawnObject = useCallback(() => {
+        const category = OBJECT_CATEGORIES[Math.floor(Math.random() * OBJECT_CATEGORIES.length)];
+        const distance = category.minDist + Math.random() * (category.maxDist - category.minDist);
+        const score = 0.6 + Math.random() * 0.35; // 0.60 - 0.95
+
+        return {
+            id: uid(),
+            class: category.class,
+            emoji: category.emoji,
+            score,
+            distanceM: parseFloat(distance.toFixed(1)),
+            bbox: randomBBox(),
+            moveSpeed: category.moveSpeed,
+            direction: Math.random() > 0.5 ? -1 : 1, // approaching or retreating
+            lifetime: 0,
+            maxLifetime: 3 + Math.floor(Math.random() * 8), // 3-10 update cycles
+        };
+    }, []);
+
+    /**
+     * Update existing objects — simulate real-time movement
+     */
+    const updateObjects = useCallback(() => {
+        frameCountRef.current += 1;
+        const frame = frameCountRef.current;
+
+        let objects = [...activeObjectsRef.current];
+
+        // Update positions of existing objects
+        objects = objects.map(obj => {
+            const newDist = Math.max(
+                0.3,
+                obj.distanceM + (obj.direction * obj.moveSpeed * (0.5 + Math.random()))
+            );
+            // Slight score fluctuation (simulates real ML model)
+            const newScore = Math.min(0.99, Math.max(0.4, obj.score + (Math.random() - 0.5) * 0.08));
+            // Slight bbox jitter
+            const bbox = obj.bbox.map((v, i) => v + (Math.random() - 0.5) * (i < 2 ? 4 : 2));
+
+            return {
+                ...obj,
+                distanceM: parseFloat(newDist.toFixed(1)),
+                score: parseFloat(newScore.toFixed(2)),
+                bbox,
+                lifetime: obj.lifetime + 1,
+            };
+        });
+
+        // Remove objects that have expired or gone too far
+        objects = objects.filter(obj => obj.lifetime < obj.maxLifetime && obj.distanceM < 15);
+
+        // Randomly spawn new objects (1-3 spawn attempts per frame)
+        const spawnChance = 0.4 + sensitivity * 0.3;
+        if (objects.length < 4 && Math.random() < spawnChance) {
+            objects.push(spawnObject());
+        }
+        // Occasionally spawn a second object
+        if (objects.length < 2 && Math.random() < 0.25) {
+            objects.push(spawnObject());
+        }
+
+        activeObjectsRef.current = objects;
+
+        // Filter by confidence threshold
+        const filtered = objects.filter(d => d.score >= confidenceThreshold);
+
+        // Sort by distance (closest first = most urgent)
+        filtered.sort((a, b) => a.distanceM - b.distanceM);
+
+        // Update stats
+        const dangerCount = filtered.filter(d => d.distanceM < 2).length;
+        setStats(prev => ({
+            ...prev,
+            totalDetected: prev.totalDetected + filtered.length,
+            dangerAlerts: prev.dangerAlerts + dangerCount,
+        }));
+
+        setDetections(filtered);
+    }, [confidenceThreshold, sensitivity, spawnObject]);
+
+    /**
+     * Start real-time detection loop
+     */
+    const start = useCallback(() => {
         setIsRunning(true);
-        demoTimerRef.current = setInterval(() => {
-            setDemoIndex(i => {
-                const next = (i + 1) % DEMO_DETECTIONS.length;
-                const det = DEMO_DETECTIONS[next];
-                if (det.score >= confidenceThreshold) {
-                    setDetections([{ ...det, distanceM: det.distanceM }]);
-                } else {
-                    setDetections([]);
-                }
-                return next;
-            });
-        }, 2500);
-    }, [confidenceThreshold]);
+        frameCountRef.current = 0;
+        activeObjectsRef.current = [];
+        setStats({ totalDetected: 0, dangerAlerts: 0, sessionStart: Date.now() });
 
-    const stopDemoMode = useCallback(() => {
-        if (demoTimerRef.current) {
-            clearInterval(demoTimerRef.current);
-            demoTimerRef.current = null;
+        // Initial spawn
+        activeObjectsRef.current = [spawnObject()];
+
+        // Run at ~2 FPS simulation (500ms interval)
+        timerRef.current = setInterval(() => {
+            updateObjects();
+        }, 800);
+    }, [spawnObject, updateObjects]);
+
+    /**
+     * Stop detection
+     */
+    const stop = useCallback(() => {
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
         }
         setIsRunning(false);
         setDetections([]);
+        activeObjectsRef.current = [];
     }, []);
 
-    // ── Real-device frame processing ─────────────────────────────────────────
-    // Called by CameraScreen with each camera frame
+    /**
+     * Process a real camera frame (for production use with TF.js)
+     * This would run the ML model on the frame data.
+     */
     const processFrame = useCallback(async (frameData) => {
-        // In a real implementation, run TF.js COCO-SSD here:
+        // Production implementation:
         // const model = await cocoSsd.load();
         // const predictions = await model.detect(frameData);
-        // For now, this hook operates in demo mode by default.
-        // Frame data processing is a no-op here — demo mode handles output.
+        // setDetections(predictions.map(p => ({
+        //     class: p.class,
+        //     score: p.score,
+        //     distanceM: estimateDistance(p.bbox),
+        //     bbox: p.bbox,
+        // })));
     }, []);
-
-    const start = useCallback(() => {
-        // Always use demo mode (TF.js web models don't yet work in Expo Go native)
-        startDemoMode();
-    }, [startDemoMode]);
-
-    const stop = useCallback(() => {
-        stopDemoMode();
-    }, [stopDemoMode]);
 
     // Clean up on unmount
     useEffect(() => {
-        return () => stopDemoMode();
-    }, [stopDemoMode]);
-
-    // Filter by confidence
-    const filteredDetections = detections.filter(d => d.score >= confidenceThreshold);
+        return () => {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+            }
+        };
+    }, []);
 
     // Severity: danger if < 2m, warning if < 4m, safe otherwise
     const getSeverity = (distanceM) => {
@@ -87,7 +199,7 @@ export const useObstacleDetection = () => {
         return 'safe';
     };
 
-    const enrichedDetections = filteredDetections.map(d => ({
+    const enrichedDetections = detections.map(d => ({
         ...d,
         severity: getSeverity(d.distanceM),
     }));
@@ -98,5 +210,6 @@ export const useObstacleDetection = () => {
         start,
         stop,
         processFrame,
+        stats,
     };
 };

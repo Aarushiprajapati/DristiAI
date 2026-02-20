@@ -5,16 +5,23 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, fontSize, fontWeight } from '../config/theme';
 import { useTranslation } from 'react-i18next';
-import { useApp } from '../context/AppContext';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-export default function SplashScreen({ navigation }) {
+/**
+ * SplashScreen — shown ONLY during the isLoading=true phase.
+ * 
+ * This is now a pure display component. Navigation is handled
+ * entirely by AppNavigator through conditional rendering based
+ * on auth state. No navigation.replace() calls here to avoid
+ * race conditions with the auth listener.
+ */
+export default function SplashScreen() {
     const { t } = useTranslation();
-    const { user } = useApp();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.6)).current;
     const taglineAnim = useRef(new Animated.Value(0)).current;
+    const rotateAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         // Logo entrance animation
@@ -32,17 +39,19 @@ export default function SplashScreen({ navigation }) {
             }).start();
         });
 
-        // Navigate after 2.5 seconds based on auth state
-        const timer = setTimeout(() => {
-            if (user) {
-                navigation.replace('Home');
-            } else {
-                navigation.replace('Onboarding');
-            }
-        }, 2800);
-
-        return () => clearTimeout(timer);
+        // Subtle pulse loop on logo
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(rotateAnim, { toValue: 1, duration: 2000, useNativeDriver: true }),
+                Animated.timing(rotateAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
+            ])
+        ).start();
     }, []);
+
+    const logoScale = rotateAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [1, 1.05],
+    });
 
     return (
         <LinearGradient
@@ -58,9 +67,9 @@ export default function SplashScreen({ navigation }) {
                 opacity: fadeAnim,
                 transform: [{ scale: scaleAnim }],
             }]}>
-                <View style={styles.logoCircle}>
+                <Animated.View style={[styles.logoCircle, { transform: [{ scale: logoScale }] }]}>
                     <Text style={styles.logoEmoji}>👁</Text>
-                </View>
+                </Animated.View>
                 <Text style={styles.appName}>DrishtiAI</Text>
             </Animated.View>
 
@@ -68,6 +77,16 @@ export default function SplashScreen({ navigation }) {
             <Animated.Text style={[styles.tagline, { opacity: taglineAnim }]}>
                 {t('splash_tagline')}
             </Animated.Text>
+
+            {/* Loading indicator */}
+            <Animated.View style={[styles.loadingWrap, { opacity: taglineAnim }]}>
+                <View style={styles.loadingDots}>
+                    {[0, 1, 2].map(i => (
+                        <View key={i} style={[styles.dot, { opacity: 0.3 + i * 0.25 }]} />
+                    ))}
+                </View>
+                <Text style={styles.loadingText}>Initializing...</Text>
+            </Animated.View>
 
             {/* Powered by bar */}
             <Animated.View style={[styles.powered, { opacity: taglineAnim }]}>
@@ -79,66 +98,44 @@ export default function SplashScreen({ navigation }) {
 
 const styles = StyleSheet.create({
     container: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
+        flex: 1, alignItems: 'center', justifyContent: 'center',
     },
     circleOuter: {
         position: 'absolute',
-        width: width * 1.2,
-        height: width * 1.2,
-        borderRadius: width * 0.6,
-        backgroundColor: 'rgba(108,99,255,0.05)',
-        top: -width * 0.3,
+        width: width * 1.2, height: width * 1.2, borderRadius: width * 0.6,
+        backgroundColor: 'rgba(108,99,255,0.05)', top: -width * 0.3,
     },
     circleInner: {
         position: 'absolute',
-        width: width * 0.8,
-        height: width * 0.8,
-        borderRadius: width * 0.4,
-        backgroundColor: 'rgba(108,99,255,0.08)',
-        bottom: -width * 0.1,
+        width: width * 0.8, height: width * 0.8, borderRadius: width * 0.4,
+        backgroundColor: 'rgba(108,99,255,0.08)', bottom: -width * 0.1,
     },
-    logoWrap: {
-        alignItems: 'center',
-        marginBottom: 24,
-    },
+    logoWrap: { alignItems: 'center', marginBottom: 24 },
     logoCircle: {
-        width: 120,
-        height: 120,
-        borderRadius: 60,
+        width: 120, height: 120, borderRadius: 60,
         backgroundColor: colors.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: colors.primary,
-        shadowOpacity: 0.6,
-        shadowRadius: 30,
-        elevation: 15,
-        marginBottom: 20,
+        alignItems: 'center', justifyContent: 'center',
+        shadowColor: colors.primary, shadowOpacity: 0.6, shadowRadius: 30,
+        elevation: 15, marginBottom: 20,
     },
-    logoEmoji: {
-        fontSize: 54,
-    },
+    logoEmoji: { fontSize: 54 },
     appName: {
-        fontSize: 40,
-        fontWeight: fontWeight.extrabold,
-        color: colors.textPrimary,
-        letterSpacing: 1,
+        fontSize: 40, fontWeight: fontWeight.extrabold,
+        color: colors.textPrimary, letterSpacing: 1,
     },
     tagline: {
-        fontSize: fontSize.lg,
-        color: colors.textSecondary,
-        textAlign: 'center',
-        paddingHorizontal: 40,
-        marginTop: 8,
+        fontSize: fontSize.lg, color: colors.textSecondary,
+        textAlign: 'center', paddingHorizontal: 40, marginTop: 8,
     },
-    powered: {
-        position: 'absolute',
-        bottom: 48,
+    loadingWrap: { marginTop: 40, alignItems: 'center' },
+    loadingDots: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+    dot: {
+        width: 8, height: 8, borderRadius: 4,
+        backgroundColor: colors.primary,
     },
+    loadingText: { color: colors.textMuted, fontSize: fontSize.xs, letterSpacing: 1 },
+    powered: { position: 'absolute', bottom: 48 },
     poweredText: {
-        fontSize: fontSize.xs,
-        color: colors.textMuted,
-        letterSpacing: 0.5,
+        fontSize: fontSize.xs, color: colors.textMuted, letterSpacing: 0.5,
     },
 });

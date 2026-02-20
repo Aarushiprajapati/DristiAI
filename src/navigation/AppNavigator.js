@@ -12,47 +12,76 @@ import NavigationScreen from '../screens/NavigationScreen';
 import SOSScreen from '../screens/SOSScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 
-const Stack = createNativeStackNavigator();
+const AuthStack = createNativeStackNavigator();
+const AppStack = createNativeStackNavigator();
+const RootStack = createNativeStackNavigator();
+
+function AuthNavigator() {
+    return (
+        <AuthStack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+            <AuthStack.Screen name="Onboarding" component={OnboardingScreen} />
+            <AuthStack.Screen name="Auth" component={AuthScreen} />
+        </AuthStack.Navigator>
+    );
+}
+
+function MainNavigator() {
+    return (
+        <AppStack.Navigator
+            screenOptions={{
+                headerShown: false,
+                animation: 'fade',
+                contentStyle: { backgroundColor: '#0a0a1a' },
+            }}
+        >
+            <AppStack.Screen name="Home" component={HomeScreen} />
+            <AppStack.Screen
+                name="Camera"
+                component={CameraScreen}
+                options={{ animation: 'slide_from_bottom' }}
+            />
+            <AppStack.Screen
+                name="Navigation"
+                component={NavigationScreen}
+                options={{ animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+                name="SOS"
+                component={SOSScreen}
+                options={{ animation: 'slide_from_bottom' }}
+            />
+            <AppStack.Screen
+                name="Settings"
+                component={SettingsScreen}
+                options={{ animation: 'slide_from_right' }}
+            />
+        </AppStack.Navigator>
+    );
+}
 
 export default function AppNavigator() {
     const { user, isLoading } = useApp();
 
-    if (isLoading) return null; // AppContext loading persisted settings
+    // Show SplashScreen while loading (checking auth state)
+    if (isLoading) {
+        return (
+            <NavigationContainer>
+                <RootStack.Navigator screenOptions={{ headerShown: false }}>
+                    <RootStack.Screen name="Splash" component={SplashScreen} />
+                </RootStack.Navigator>
+            </NavigationContainer>
+        );
+    }
 
     return (
         <NavigationContainer>
-            <Stack.Navigator
-                screenOptions={{
-                    headerShown: false,
-                    animation: 'fade',
-                    contentStyle: { backgroundColor: '#0a0a1a' },
-                }}
-            >
-                <Stack.Screen name="Splash" component={SplashScreen} />
-                <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-                <Stack.Screen name="Auth" component={AuthScreen} />
-                <Stack.Screen name="Home" component={HomeScreen} />
-                <Stack.Screen
-                    name="Camera"
-                    component={CameraScreen}
-                    options={{ animation: 'slide_from_bottom' }}
-                />
-                <Stack.Screen
-                    name="Navigation"
-                    component={NavigationScreen}
-                    options={{ animation: 'slide_from_right' }}
-                />
-                <Stack.Screen
-                    name="SOS"
-                    component={SOSScreen}
-                    options={{ animation: 'slide_from_bottom' }}
-                />
-                <Stack.Screen
-                    name="Settings"
-                    component={SettingsScreen}
-                    options={{ animation: 'slide_from_right' }}
-                />
-            </Stack.Navigator>
+            <RootStack.Navigator screenOptions={{ headerShown: false }}>
+                {user ? (
+                    <RootStack.Screen name="Main" component={MainNavigator} />
+                ) : (
+                    <RootStack.Screen name="AuthFlow" component={AuthNavigator} />
+                )}
+            </RootStack.Navigator>
         </NavigationContainer>
     );
 }
