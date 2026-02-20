@@ -1,29 +1,66 @@
 {
   "expo": {
-    "name": "DristiAI",
-    "slug": "DristiAI",
+    "name": "DrishtiAI",
+    "slug": "drishti-ai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0a0a1a"
     },
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.drishti.ai",
+      "infoPlist": {
+        "NSCameraUsageDescription": "DrishtiAI uses the camera to detect obstacles in real time and keep you safe.",
+        "NSMicrophoneUsageDescription": "DrishtiAI uses the microphone for voice commands.",
+        "NSLocationWhenInUseUsageDescription": "DrishtiAI uses your location for navigation and emergency SOS.",
+        "NSContactsUsageDescription": "DrishtiAI reads contacts to set emergency contacts."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0a0a1a"
       },
-      "edgeToEdgeEnabled": true
+      "package": "com.drishti.ai",
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+        }
+      },
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "VIBRATE",
+        "READ_CONTACTS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-location",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "DrishtiAI needs microphone access for voice commands."
+        }
+      ]
+    ]
   }
 }
