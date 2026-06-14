@@ -13,7 +13,8 @@
     },
     "platforms": [
       "ios",
-      "android"
+      "android",
+      "web"
     ],
     "assetBundlePatterns": [
       "**/*"
@@ -60,7 +61,8 @@
         {
           "microphonePermission": "DrishtiAI needs microphone access for voice commands."
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }

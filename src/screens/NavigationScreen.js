@@ -4,7 +4,7 @@ import {
     Dimensions, Switch, ActivityIndicator, Platform,
     ScrollView, Animated,
 } from 'react-native';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Circle } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, Circle } from '../components/MapView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';

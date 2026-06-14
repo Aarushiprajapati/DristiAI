@@ -1,10 +1,11 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import {
-    browserLocalPersistence,
-    getAuth,
     initializeAuth,
+    getAuth,
+    getReactNativePersistence,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { firebaseConfig } from "./firebaseConfig";
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -12,7 +13,7 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 let auth;
 try {
     auth = initializeAuth(app, {
-        persistence: browserLocalPersistence,
+        persistence: getReactNativePersistence(AsyncStorage),
     });
 } catch (error) {
     if (error.code === "auth/already-initialized") {
